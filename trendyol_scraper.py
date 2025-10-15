@@ -417,68 +417,52 @@ class TrendyolScraper:
             print(f"HTML'den yorumlar çekilirken hata: {str(e)}")
 
     def _load_all_comments(self):
-        """Tüm yorumları yüklemek için 'Daha Fazla' butonlarına tıklar"""
-        max_clicks = 500  # Maksimum tıklama sayısı
-        clicks = 0
-        no_button_count = 0  # Buton bulunamama sayacı
+        """INFINITE SCROLL: Sayfayı scroll ederek tüm yorumları yükler"""
+        max_scrolls = 200  # Maksimum scroll sayısı
+        scrolls = 0
+        no_new_comments_count = 0  # Yeni yorum gelmeme sayacı
 
-        while clicks < max_clicks:
+        print("Infinite scroll ile yorumlar yükleniyor...")
+
+        while scrolls < max_scrolls:
             try:
-                # Sayfayı agresif şekilde aşağı kaydır (yeni yorumların yüklenmesi için)
-                self.driver.execute_script("window.scrollBy(0, 800);")
-                time.sleep(0.3)
+                # Mevcut yorum sayısını al
+                previous_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div.review"))
 
-                # Sayfadaki mevcut yorum sayısını kontrol et
-                if self.max_comments:
-                    # Yorum elementlerini say
-                    possible_selectors = [
-                        "div.comment-list div.rnr-com-card",
-                        "div[class*='review-card']",
-                        "div[class*='comment-card']",
-                    ]
-                    current_comment_count = 0
-                    for selector in possible_selectors:
-                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        if elements:
-                            current_comment_count = len(elements) - 2  # İlk 2'yi çıkar (filtre elementleri)
-                            break
+                # Sayfanın en altına scroll yap
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(1.5)  # Yorumların yüklenmesi için bekle
 
-                    # Yeterli yorum varsa dur (tekrar eden yorumlar için +100% buffer ekle)
-                    if current_comment_count >= self.max_comments * 2:
-                        print(f"Yeterli yorum yüklendi ({current_comment_count}), daha fazla yükleme yapılmayacak")
-                        break
+                # Yeni yorum sayısını al
+                current_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div.review"))
 
-                # "Daha fazla yorum göster" butonunu bul
-                try:
-                    load_more = self.driver.find_element(By.CSS_SELECTOR, "button[class*='load-more'], button[class*='show-more']")
-                    no_button_count = 0  # Buton bulundu, sayacı sıfırla
+                scrolls += 1
 
-                    if load_more.is_displayed():
-                        # Butonu görünür hale getir ve tıkla
-                        self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", load_more)
-                        time.sleep(0.5)
-                        self.driver.execute_script("arguments[0].click();", load_more)
-                        time.sleep(1)
-                        clicks += 1
-                        print(f"Daha fazla yorum yüklendi (tıklama #{clicks})")
-                    else:
-                        no_button_count += 1
-                        if no_button_count >= 3:
-                            print("'Daha fazla' butonu artık görünmüyor, tüm yorumlar yüklendi")
-                            break
-                except:
-                    no_button_count += 1
-                    if no_button_count >= 3:
-                        # 3 kez üst üste buton bulunamadıysa tüm yorumlar yüklenmiş demektir
-                        print(f"'Daha fazla' butonu bulunamadı. Tüm yorumlar yüklendi. Toplam {clicks} kez tıklandı.")
-                        break
-                    # Biraz daha scroll yap ve tekrar dene
-                    self.driver.execute_script("window.scrollBy(0, 1000);")
-                    time.sleep(0.5)
+                # Yeni yorum geldi mi?
+                if current_count > previous_count:
+                    new_comments = current_count - previous_count
+                    print(f"Scroll #{scrolls}: {new_comments} yeni yorum yüklendi (Toplam: {current_count})")
+                    no_new_comments_count = 0  # Sayacı sıfırla
+                else:
+                    no_new_comments_count += 1
+                    print(f"Scroll #{scrolls}: Yeni yorum yok (Toplam: {current_count})")
+
+                # 5 kez üst üste yeni yorum gelmediyse dur
+                if no_new_comments_count >= 5:
+                    print(f"\n5 kez üst üste yeni yorum gelmedi. Tüm yorumlar yüklendi (Toplam: {current_count})")
+                    break
+
+                # Hedef sayıya ulaşıldıysa dur (buffer ile)
+                if self.max_comments and current_count >= self.max_comments * 2:
+                    print(f"\nYeterli yorum yüklendi ({current_count}). Hedef: {self.max_comments}")
+                    break
 
             except Exception as e:
-                print(f"Yorum yükleme hatası: {str(e)}")
+                print(f"Scroll hatası: {str(e)}")
                 break
+
+        final_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div.review"))
+        print(f"\nScroll tamamlandı. Toplam {final_count} yorum yüklendi ({scrolls} scroll)")
 
     def _extract_rating(self, rating_class):
         """Yıldız puanını class'tan çıkarır"""
