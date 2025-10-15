@@ -30,6 +30,7 @@ class TrendyolScraper:
         self.headless = headless
         self.max_comments = max_comments
         self.comments = []
+        self.reviews = []
         self.product_info = {}
 
     def setup_driver(self):
@@ -50,19 +51,21 @@ class TrendyolScraper:
         self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.maximize_window()
 
-    def scrape_product(self, url):
+    def scrape_product(self, url, scrape_mode='comments'):
         """
-        Ürün bilgilerini ve yorumları çeker
+        Ürün bilgilerini ve yorumları/değerlendirmeleri çeker
 
         Args:
             url (str): Trendyol ürün URL'si
+            scrape_mode (str): 'comments' (yorumlar) veya 'reviews' (değerlendirmeler)
 
         Returns:
-            dict: Ürün bilgileri ve yorumlar
+            dict: Ürün bilgileri ve yorumlar/değerlendirmeler
         """
         try:
             self.setup_driver()
             print(f"URL açılıyor: {url}")
+            print(f"Scraping modu: {scrape_mode}")
             self.driver.get(url)
 
             # Sayfanın yüklenmesini bekle
@@ -74,14 +77,25 @@ class TrendyolScraper:
             # Yorumlar sekmesine git
             self._navigate_to_comments()
 
-            # Yorumları çek
-            self._extract_comments()
-
-            return {
-                'product_info': self.product_info,
-                'comments': self.comments,
-                'total_comments': len(self.comments)
-            }
+            # Scraping moduna göre veri çek
+            if scrape_mode == 'reviews':
+                # Değerlendirmeleri çek
+                self._extract_reviews_from_html()
+                return {
+                    'product_info': self.product_info,
+                    'reviews': self.reviews,
+                    'total_reviews': len(self.reviews),
+                    'scrape_mode': 'reviews'
+                }
+            else:
+                # Yorumları çek (varsayılan)
+                self._extract_comments()
+                return {
+                    'product_info': self.product_info,
+                    'comments': self.comments,
+                    'total_comments': len(self.comments),
+                    'scrape_mode': 'comments'
+                }
 
         except Exception as e:
             print(f"Hata oluştu: {str(e)}")
@@ -445,6 +459,171 @@ class TrendyolScraper:
         final_count = len(self.driver.find_elements(By.CSS_SELECTOR, "div.review"))
         print(f"\nScroll tamamlandı. Toplam {final_count} yorum yüklendi ({scrolls} scroll)")
 
+    def _load_all_reviews(self):
+        """INFINITE SCROLL: review-list-scroll-container içinde scroll ederek tüm değerlendirmeleri yükler"""
+        max_scrolls = 200  # Maksimum scroll sayısı
+        scrolls = 0
+        no_new_reviews_count = 0  # Yeni değerlendirme gelmeme sayacı
+
+        print("Infinite scroll ile değerlendirmeler yükleniyor...")
+
+        try:
+            # review-list-scroll-container'ı bul
+            scroll_container = self.driver.find_element(By.CSS_SELECTOR, ".review-list-scroll-container")
+        except:
+            print("review-list-scroll-container bulunamadı, normal scroll kullanılacak")
+            scroll_container = None
+
+        while scrolls < max_scrolls:
+            try:
+                # Mevcut review sayısını al
+                previous_count = len(self.driver.find_elements(By.CSS_SELECTOR, ".review-list .review"))
+
+                # Scroll yap
+                if scroll_container:
+                    # Container içinde scroll
+                    self.driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", scroll_container)
+                else:
+                    # Normal sayfa scroll
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+                time.sleep(1.5)  # Değerlendirmelerin yüklenmesi için bekle
+
+                # Yeni review sayısını al
+                current_count = len(self.driver.find_elements(By.CSS_SELECTOR, ".review-list .review"))
+
+                scrolls += 1
+
+                # Yeni review geldi mi?
+                if current_count > previous_count:
+                    new_reviews = current_count - previous_count
+                    print(f"Scroll #{scrolls}: {new_reviews} yeni değerlendirme yüklendi (Toplam: {current_count})")
+                    no_new_reviews_count = 0  # Sayacı sıfırla
+                else:
+                    no_new_reviews_count += 1
+                    print(f"Scroll #{scrolls}: Yeni değerlendirme yok (Toplam: {current_count})")
+
+                # 5 kez üst üste yeni review gelmediyse dur
+                if no_new_reviews_count >= 5:
+                    print(f"\n5 kez üst üste yeni değerlendirme gelmedi. Tümü yüklendi (Toplam: {current_count})")
+                    break
+
+                # Hedef sayıya ulaşıldıysa dur (buffer ile)
+                if self.max_comments and current_count >= self.max_comments * 2:
+                    print(f"\nYeterli değerlendirme yüklendi ({current_count}). Hedef: {self.max_comments}")
+                    break
+
+            except Exception as e:
+                print(f"Scroll hatası: {str(e)}")
+                break
+
+        final_count = len(self.driver.find_elements(By.CSS_SELECTOR, ".review-list .review"))
+        print(f"\nScroll tamamlandı. Toplam {final_count} değerlendirme yüklendi ({scrolls} scroll)")
+
+    def _extract_reviews_from_html(self):
+        """review-container yapısından değerlendirmeleri çeker"""
+        try:
+            # Tüm değerlendirmeleri yüklemek için scroll yap
+            self._load_all_reviews()
+
+            print(f"\nDeğerlendirmeler işlenmeye başlanıyor...")
+            print(f"Hedef değerlendirme sayısı: {self.max_comments if self.max_comments else 'Tümü'}")
+
+            # .review-list .review elementlerini bul
+            review_elements = self.driver.find_elements(By.CSS_SELECTOR, ".review-list .review")
+
+            if not review_elements:
+                print("Değerlendirme bulunamadı")
+                return
+
+            print(f"İşlenecek değerlendirme elementi sayısı: {len(review_elements)}")
+
+            for idx, review_elem in enumerate(review_elements, 1):
+                # Maksimum review sayısına ulaşıldıysa dur
+                if self.max_comments and len(self.reviews) >= self.max_comments:
+                    print(f"\n✓ Hedef değerlendirme sayısına ulaşıldı: {len(self.reviews)}/{self.max_comments}")
+                    break
+
+                try:
+                    # Review'ı görünür hale getir (scroll)
+                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", review_elem)
+                    time.sleep(0.2)
+
+                    review_data = {}
+
+                    # "Devamını oku" butonunu kontrol et ve tıkla
+                    try:
+                        read_more_button = review_elem.find_element(By.XPATH, ".//a[contains(text(), 'Devamını oku')] | .//button[contains(text(), 'Devamını oku')] | .//span[contains(text(), 'Devamını oku')]")
+                        if read_more_button and read_more_button.is_displayed():
+                            self.driver.execute_script("arguments[0].click();", read_more_button)
+                            time.sleep(0.5)
+                            print(f"Değerlendirme {idx} için 'Devamını oku' butonuna tıklandı")
+                    except:
+                        pass  # Buton yoksa devam et
+
+                    # item-header > seller
+                    try:
+                        seller = review_elem.find_element(By.CSS_SELECTOR, ".item-header .seller")
+                        review_data['seller'] = ' '.join(seller.text.split()).strip() if seller.text else "Satıcı bulunamadı"
+                    except:
+                        review_data['seller'] = "Satıcı bulunamadı"
+
+                    # item-header > product
+                    try:
+                        product = review_elem.find_element(By.CSS_SELECTOR, ".item-header .product")
+                        review_data['product'] = ' '.join(product.text.split()).strip() if product.text else "Ürün bulunamadı"
+                    except:
+                        review_data['product'] = "Ürün bulunamadı"
+
+                    # review-info > name-wrapper > comment
+                    try:
+                        comment = review_elem.find_element(By.CSS_SELECTOR, ".review-info .name-wrapper .comment")
+                        review_data['comment'] = comment.text.strip() if comment.text else ""
+                    except:
+                        review_data['comment'] = ""
+
+                    # review-info > review-info-detail > name
+                    try:
+                        name = review_elem.find_element(By.CSS_SELECTOR, ".review-info .review-info-detail .name")
+                        review_data['name'] = ' '.join(name.text.split()).strip() if name.text else "Anonim"
+                    except:
+                        review_data['name'] = "Anonim"
+
+                    # review-info > review-info-detail > date
+                    try:
+                        date = review_elem.find_element(By.CSS_SELECTOR, ".review-info .review-info-detail .date")
+                        review_data['date'] = ' '.join(date.text.split()).strip() if date.text else "Tarih yok"
+                    except:
+                        review_data['date'] = "Tarih yok"
+
+                    # Tekrar kontrolü - SADECE comment text'e bak
+                    if review_data['comment']:
+                        is_duplicate = False
+                        for existing_review in self.reviews:
+                            if existing_review.get('comment') == review_data['comment']:
+                                is_duplicate = True
+                                print(f"Değerlendirme {idx} tekrar ediyor (aynı metin), atlanıyor")
+                                break
+
+                        if not is_duplicate:
+                            self.reviews.append(review_data)
+                            print(f"✓ Değerlendirme {idx} eklendi (Toplam: {len(self.reviews)})")
+                    else:
+                        print(f"Değerlendirme {idx} boş veya çekilemedi, atlanıyor")
+
+                except Exception as e:
+                    print(f"✗ Değerlendirme {idx} çekilirken hata: {str(e)}")
+                    continue
+
+            if self.max_comments and len(self.reviews) < self.max_comments:
+                print(f"\n⚠ Uyarı: Hedef değerlendirme sayısına ulaşılamadı. İstenen: {self.max_comments}, Çekilen: {len(self.reviews)}")
+                print(f"Toplam {len(review_elements)} element işlendi, {len(self.reviews)} benzersiz değerlendirme bulundu")
+            else:
+                print(f"\n✓ Toplam {len(self.reviews)} değerlendirme başarıyla çekildi")
+
+        except Exception as e:
+            print(f"Değerlendirmeler çekilirken hata: {str(e)}")
+
     def _extract_rating(self, rating_class):
         """Yıldız puanını class'tan çıkarır"""
         try:
@@ -464,19 +643,26 @@ class TrendyolScraper:
 
     def export_to_word(self, filename="trendyol_yorumlar.docx"):
         """
-        Yorumları Word dosyasına aktarır
+        Yorumları veya değerlendirmeleri Word dosyasına aktarır
 
         Args:
             filename (str): Çıktı dosya adı
         """
-        if not self.comments:
-            print("Henüz yorum çekilmedi!")
+        # Reviews var mı kontrol et
+        has_reviews = len(self.reviews) > 0
+        has_comments = len(self.comments) > 0
+
+        if not has_reviews and not has_comments:
+            print("Henüz veri çekilmedi!")
             return
 
         doc = Document()
 
         # Başlık
-        title = doc.add_heading('Trendyol Ürün Yorumları', 0)
+        if has_reviews:
+            title = doc.add_heading('Trendyol Ürün Değerlendirmeleri', 0)
+        else:
+            title = doc.add_heading('Trendyol Ürün Yorumları', 0)
         title.alignment = 1  # Ortalanmış
 
         # Ürün bilgileri
@@ -487,33 +673,76 @@ class TrendyolScraper:
             p.add_run(str(value))
 
         doc.add_paragraph()
-        doc.add_heading(f'Toplam Yorum Sayısı: {len(self.comments)}', level=2)
-        doc.add_paragraph()
 
-        # Yorumlar
-        doc.add_heading('Yorumlar', level=1)
+        # Reviews varsa onu export et
+        if has_reviews:
+            doc.add_heading(f'Toplam Değerlendirme Sayısı: {len(self.reviews)}', level=2)
+            doc.add_paragraph()
 
-        for idx, comment in enumerate(self.comments, 1):
-            # Yorum başlığı
-            doc.add_heading(f'Yorum #{idx}', level=2)
+            # Değerlendirmeler
+            doc.add_heading('Değerlendirmeler', level=1)
 
-            # Kullanıcı bilgisi
-            p = doc.add_paragraph()
-            p.add_run('Kullanıcı: ').bold = True
-            p.add_run(comment.get('user', 'Anonim'))
+            for idx, review in enumerate(self.reviews, 1):
+                # Değerlendirme başlığı
+                doc.add_heading(f'Değerlendirme #{idx}', level=2)
 
-            # Tarih
-            p = doc.add_paragraph()
-            p.add_run('Tarih: ').bold = True
-            p.add_run(comment.get('date', 'Bilinmiyor'))
+                # Satıcı
+                p = doc.add_paragraph()
+                p.add_run('Satıcı: ').bold = True
+                p.add_run(review.get('seller', 'Bilinmiyor'))
 
-            # Yorum metni
-            p = doc.add_paragraph()
-            p.add_run('Yorum: ').bold = True
-            doc.add_paragraph(comment.get('comment', ''))
+                # Ürün
+                p = doc.add_paragraph()
+                p.add_run('Ürün: ').bold = True
+                p.add_run(review.get('product', 'Bilinmiyor'))
 
-            # Ayırıcı
-            doc.add_paragraph('_' * 80)
+                # Kullanıcı bilgisi
+                p = doc.add_paragraph()
+                p.add_run('Kullanıcı: ').bold = True
+                p.add_run(review.get('name', 'Anonim'))
+
+                # Tarih
+                p = doc.add_paragraph()
+                p.add_run('Tarih: ').bold = True
+                p.add_run(review.get('date', 'Bilinmiyor'))
+
+                # Yorum metni
+                p = doc.add_paragraph()
+                p.add_run('Değerlendirme: ').bold = True
+                doc.add_paragraph(review.get('comment', ''))
+
+                # Ayırıcı
+                doc.add_paragraph('_' * 80)
+
+        # Comments varsa onu export et
+        else:
+            doc.add_heading(f'Toplam Yorum Sayısı: {len(self.comments)}', level=2)
+            doc.add_paragraph()
+
+            # Yorumlar
+            doc.add_heading('Yorumlar', level=1)
+
+            for idx, comment in enumerate(self.comments, 1):
+                # Yorum başlığı
+                doc.add_heading(f'Yorum #{idx}', level=2)
+
+                # Kullanıcı bilgisi
+                p = doc.add_paragraph()
+                p.add_run('Kullanıcı: ').bold = True
+                p.add_run(comment.get('user', 'Anonim'))
+
+                # Tarih
+                p = doc.add_paragraph()
+                p.add_run('Tarih: ').bold = True
+                p.add_run(comment.get('date', 'Bilinmiyor'))
+
+                # Yorum metni
+                p = doc.add_paragraph()
+                p.add_run('Yorum: ').bold = True
+                doc.add_paragraph(comment.get('comment', ''))
+
+                # Ayırıcı
+                doc.add_paragraph('_' * 80)
 
         doc.save(filename)
         print(f"Word dosyası oluşturuldu: {filename}")
@@ -607,28 +836,43 @@ class TrendyolScraper:
 
 def main():
     """Ana fonksiyon - örnek kullanım"""
-    # Trendyol ürün URL'si (örnek)
-    url = input("Trendyol ürün URL'sini girin: ")
+    # Ürün mü Mağaza mı seçimi (İLK SORU)
+    print("Neyin değerlendirmelerini çekmek istersiniz?")
+    print("1) Ürün Yorumları")
+    print("2) Mağaza Değerlendirmeleri")
+    mode_choice = input("Seçiminiz (1 veya 2): ").strip()
 
-    # Maksimum yorum sayısı
-    max_comments_input = input("Maksimum kaç yorum çekmek istersiniz? (Tümü için Enter'a basın): ").strip()
+    scrape_mode = 'reviews' if mode_choice == '2' else 'comments'
+
+    # Trendyol ürün URL'si
+    url = input("\nTrendyol ürün URL'sini girin: ")
+
+    # Maksimum yorum/değerlendirme sayısı
+    data_type = "değerlendirme" if scrape_mode == 'reviews' else "yorum"
+    max_comments_input = input(f"Maksimum kaç {data_type} çekmek istersiniz? (Tümü için Enter'a basın): ").strip()
     max_comments = int(max_comments_input) if max_comments_input else None
 
     # Scraper başlat
     scraper = TrendyolScraper(headless=False, max_comments=max_comments)  # headless=True yaparak arka planda çalıştırabilirsiniz
 
     try:
-        # Yorumları çek
-        result = scraper.scrape_product(url)
+        # Verileri çek
+        result = scraper.scrape_product(url, scrape_mode=scrape_mode)
 
         print(f"\n{'='*50}")
         print(f"Ürün: {result['product_info'].get('name', 'Bilinmiyor')}")
-        print(f"Toplam {result['total_comments']} yorum çekildi")
+
+        if scrape_mode == 'reviews':
+            print(f"Toplam {result['total_reviews']} mağaza değerlendirmesi çekildi")
+        else:
+            print(f"Toplam {result['total_comments']} ürün yorumu çekildi")
+
         print(f"{'='*50}\n")
 
         # Dosyaya kaydet (sadece Word formatı)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        scraper.export_to_word(f"trendyol_yorumlar_{timestamp}.docx")
+        filename = f"trendyol_{scrape_mode}_{timestamp}.docx"
+        scraper.export_to_word(filename)
 
         print("\nİşlem tamamlandı!")
 
