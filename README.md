@@ -1,15 +1,17 @@
-# Trendyol Yorum Scraper
+# Trendyol Scraper
 
-Trendyol ürünlerinin yorumlarını çeken ve PDF/Word formatında kaydeden Python web scraper aracı.
+Trendyol'dan ürün yorumlarını ve mağaza değerlendirmelerini çekerek Word formatında kaydeden Python tabanlı web scraper.
 
 ## Özellikler
 
-- Trendyol ürün sayfasından tüm yorumları otomatik çeker
-- Ürün bilgilerini (ad, marka, fiyat, puan) toplar
-- Yorumları PDF formatında kaydeder
-- Yorumları Word (DOCX) formatında kaydeder
-- Kullanıcı dostu arayüz
-- Dinamik sayfa yükleme desteği
+- **Grafik Arayüz (GUI):** Kullanıcı dostu modern arayüz
+- **2 Farklı Scraping Modu:**
+  - Ürün Yorumları
+  - Mağaza Değerlendirmeleri (alfabetik kategorize)
+- **Infinite Scroll:** Tüm yorumları/değerlendirmeleri otomatik yükler
+- **Word Export:** Düzenli formatlanmış Word dosyası
+- **Real-time Log:** Canlı işlem takibi
+- **Headless Mode:** Arka planda çalıştırma seçeneği
 
 ## Kurulum
 
@@ -26,111 +28,149 @@ WebDriver otomatik olarak `webdriver-manager` tarafından indirilecektir.
 
 ## Kullanım
 
-### Basit Kullanım
+### GUI ile Kullanım (Önerilen)
+
+```bash
+python gui_app.py
+```
+
+**Arayüz Özellikleri:**
+1. **Scraping Modu Seçimi:** Radio button ile mod seçin
+2. **URL Girişi:** Trendyol ürün URL'sini yapıştırın
+3. **Maksimum Limit:** İsteğe bağlı sayı limiti
+4. **Headless Mode:** Tarayıcıyı gizli çalıştırma
+5. **Real-time Log:** Canlı işlem takibi
+6. **Progress Bar:** Görsel ilerleme göstergesi
+
+### Komut Satırı ile Kullanım
 
 ```bash
 python trendyol_scraper.py
 ```
 
-Program çalıştırıldığında:
-1. Trendyol ürün URL'sini girmenizi isteyecek
-2. Kayıt formatını seçmenizi isteyecek (pdf/word/both)
-3. Yorumları çekip seçtiğiniz formatta kaydedecek
+Adımlar:
+1. Mod seçin (1: Ürün Yorumları, 2: Mağaza Değerlendirmeleri)
+2. URL girin
+3. Limit belirleyin (opsiyonel)
 
-### Örnek URL
-
-```
-https://www.trendyol.com/marka/urun-adi-p-123456789
-```
-
-### Kod İçinde Kullanım
+### Programatik Kullanım
 
 ```python
 from trendyol_scraper import TrendyolScraper
 
-# Scraper oluştur
-scraper = TrendyolScraper(headless=False)
+scraper = TrendyolScraper(headless=False, max_comments=50)
 
-# Ürün URL'si
-url = "https://www.trendyol.com/..."
+result = scraper.scrape_product(
+    url="https://www.trendyol.com/...",
+    scrape_mode='reviews'  # veya 'comments'
+)
 
-# Yorumları çek
-result = scraper.scrape_product(url)
+scraper.export_to_word("output.docx")
 
-# PDF olarak kaydet
-scraper.export_to_pdf("yorumlar.pdf")
-
-# Word olarak kaydet
-scraper.export_to_word("yorumlar.docx")
+print(f"Çekilen: {result.get('total_reviews', result.get('total_comments'))}")
 ```
-
-### Parametreler
-
-**TrendyolScraper(headless=True)**
-- `headless=True`: Tarayıcıyı arka planda çalıştırır (görünmez)
-- `headless=False`: Tarayıcı penceresini gösterir (hata ayıklama için yararlı)
 
 ## Çıktı Formatı
 
-### Word Dosyası
-- Ürün bilgileri
-- Her yorum için:
-  - Kullanıcı adı
-  - Puan (yıldız)
-  - Tarih
-  - Yorum metni
+### Ürün Yorumları
+```
+Trendyol Ürün Yorumları
+├── Ürün Bilgileri
+├── Toplam Yorum Sayısı: X
+└── Yorumlar
+    ├── Yorum #1 (Kullanıcı, Tarih, Metin)
+    └── ...
+```
 
-### PDF Dosyası
-- Word ile aynı içerik
-- Profesyonel PDF formatında
+### Mağaza Değerlendirmeleri (Alfabetik)
+```
+Trendyol Ürün Değerlendirmeleri
+├── Ürün Bilgileri
+├── Toplam Değerlendirme Sayısı: X
+└── Değerlendirmeler (Alfabetik)
+    ├── 📦 Asus Laptop
+    │   └── 5 değerlendirme
+    ├── 📦 Samsung Monitor
+    └── ...
+```
 
-## Örnek Çıktı
+**Dosya Adı:**
+- `trendyol_comments_20251015_143022.docx`
+- `trendyol_reviews_20251015_143022.docx`
 
-Dosyalar otomatik olarak zaman damgası ile kaydedilir:
-- `trendyol_yorumlar_20251015_143022.pdf`
-- `trendyol_yorumlar_20251015_143022.docx`
+## GUI Ekran Görüntüsü
 
-## Önemli Notlar
+```
+┌─────────────────────────────────────────┐
+│      Trendyol Scraper                   │
+├─────────────────────────────────────────┤
+│ Scraping Modu:                          │
+│  ○ Ürün Yorumları                       │
+│  ○ Mağaza Değerlendirmeleri             │
+│                                         │
+│ Trendyol URL:                           │
+│ [___________________________________]   │
+│                                         │
+│ Maksimum Sayı:                          │
+│ [________]                              │
+│                                         │
+│ ☐ Arka planda çalıştır                 │
+│                                         │
+│ [Başlat]  [Durdur]                      │
+│                                         │
+│ İlerleme:                               │
+│ [████████████████░░░░░░░░]              │
+│                                         │
+│ Log:                                    │
+│ ┌───────────────────────────────┐       │
+│ │ [12:34:56] Scraper başlatıldı │       │
+│ │ [12:34:58] 25 yorum çekildi    │       │
+│ └───────────────────────────────┘       │
+│                                         │
+│ ● Hazır                                 │
+└─────────────────────────────────────────┘
+```
 
-1. **Robots.txt**: Bu scraper eğitim amaçlıdır. Trendyol'un kullanım koşullarına uygun kullanın.
+## Teknik Detaylar
 
-2. **Rate Limiting**: Çok fazla istek göndermemek için kod içinde `time.sleep()` kullanılmıştır.
-
-3. **Dinamik İçerik**: Trendyol dinamik bir site olduğu için Selenium kullanılır.
-
-4. **Hata Yönetimi**: Scraper hata durumlarında bilgilendirici mesajlar verir.
+| Özellik | Açıklama |
+|---------|----------|
+| GUI Framework | Tkinter |
+| Web Scraping | Selenium + Chrome WebDriver |
+| Scroll Yöntemi | Infinite Scroll (max 200) |
+| Export Format | Word (DOCX) |
+| Threading | Arka plan thread ile GUI donmaması |
 
 ## Sorun Giderme
 
-### Chrome Driver Hatası
-```
-ChromeDriver hatası alıyorsanız, Chrome'un güncel olduğundan emin olun.
-```
+**ChromeDriver Hatası:**
+- Chrome tarayıcısını güncelleyin
 
-### Yorumlar Bulunamıyor
-```
-- Ürün URL'sinin doğru olduğundan emin olun
-- headless=False yaparak tarayıcıyı görebilir ve hata ayıklayabilirsiniz
-- Sayfanın tam yüklendiğinden emin olun
-```
+**Element Bulunamadı:**
+- Sayfa yapısı değişmiş olabilir
 
-### Bağlantı Zaman Aşımı
-```
-İnternet bağlantınızı kontrol edin veya time.sleep() değerlerini artırın
-```
+**GUI Açılmıyor:**
+- `tkinter` kütüphanesinin kurulu olduğundan emin olun
 
-## Geliştirme
+**Hedef Sayıya Ulaşılamadı:**
+- Normal bir durum, sayfada yeterli veri yok
 
-Katkıda bulunmak isterseniz:
-1. Fork yapın
-2. Feature branch oluşturun
-3. Değişikliklerinizi commit edin
-4. Pull request gönderin
+## Katkıda Bulunma
+
+1. Fork edin
+2. Branch oluşturun (`git checkout -b feature/amazing`)
+3. Commit edin (`git commit -m 'Add feature'`)
+4. Push edin (`git push origin feature/amazing`)
+5. Pull Request açın
 
 ## Lisans
 
-Bu proje eğitim amaçlıdır. Ticari kullanım için Trendyol'un izni gerekebilir.
+MIT License - Eğitim amaçlıdır
 
 ## İletişim
 
-Sorular veya öneriler için issue açabilirsiniz.
+Issue açarak soru sorabilirsiniz
+
+---
+
+**⚠ Uyarı:** Trendyol'un web yapısı değişebilir. Selector'ların güncellenmesi gerekebilir.
