@@ -679,40 +679,59 @@ class TrendyolScraper:
             doc.add_heading(f'Toplam Değerlendirme Sayısı: {len(self.reviews)}', level=2)
             doc.add_paragraph()
 
+            # Ürünlere göre grupla
+            products_dict = {}
+            for review in self.reviews:
+                product_name = review.get('product', 'Bilinmiyor')
+                if product_name not in products_dict:
+                    products_dict[product_name] = []
+                products_dict[product_name].append(review)
+
+            # Ürün isimlerini alfabetik sırala
+            sorted_products = sorted(products_dict.keys())
+
             # Değerlendirmeler
-            doc.add_heading('Değerlendirmeler', level=1)
+            doc.add_heading('Değerlendirmeler (Ürünlere Göre Alfabetik)', level=1)
 
-            for idx, review in enumerate(self.reviews, 1):
-                # Değerlendirme başlığı
-                doc.add_heading(f'Değerlendirme #{idx}', level=2)
+            # Her ürün için kategori oluştur
+            for product_name in sorted_products:
+                product_reviews = products_dict[product_name]
 
-                # Satıcı
-                p = doc.add_paragraph()
-                p.add_run('Satıcı: ').bold = True
-                p.add_run(review.get('seller', 'Bilinmiyor'))
+                # Ürün başlığı
+                doc.add_heading(f'📦 {product_name}', level=2)
+                doc.add_paragraph(f'Bu ürüne ait {len(product_reviews)} değerlendirme')
+                doc.add_paragraph()
 
-                # Ürün
-                p = doc.add_paragraph()
-                p.add_run('Ürün: ').bold = True
-                p.add_run(review.get('product', 'Bilinmiyor'))
+                # Bu ürüne ait değerlendirmeleri yaz
+                for idx, review in enumerate(product_reviews, 1):
+                    # Değerlendirme başlığı
+                    doc.add_heading(f'Değerlendirme #{idx}', level=3)
 
-                # Kullanıcı bilgisi
-                p = doc.add_paragraph()
-                p.add_run('Kullanıcı: ').bold = True
-                p.add_run(review.get('name', 'Anonim'))
+                    # Satıcı
+                    p = doc.add_paragraph()
+                    p.add_run('Satıcı: ').bold = True
+                    p.add_run(review.get('seller', 'Bilinmiyor'))
 
-                # Tarih
-                p = doc.add_paragraph()
-                p.add_run('Tarih: ').bold = True
-                p.add_run(review.get('date', 'Bilinmiyor'))
+                    # Kullanıcı bilgisi
+                    p = doc.add_paragraph()
+                    p.add_run('Kullanıcı: ').bold = True
+                    p.add_run(review.get('name', 'Anonim'))
 
-                # Yorum metni
-                p = doc.add_paragraph()
-                p.add_run('Değerlendirme: ').bold = True
-                doc.add_paragraph(review.get('comment', ''))
+                    # Tarih
+                    p = doc.add_paragraph()
+                    p.add_run('Tarih: ').bold = True
+                    p.add_run(review.get('date', 'Bilinmiyor'))
 
-                # Ayırıcı
-                doc.add_paragraph('_' * 80)
+                    # Yorum metni
+                    p = doc.add_paragraph()
+                    p.add_run('Değerlendirme: ').bold = True
+                    doc.add_paragraph(review.get('comment', ''))
+
+                    # Ayırıcı
+                    doc.add_paragraph('_' * 80)
+
+                # Ürünler arası boşluk
+                doc.add_page_break()
 
         # Comments varsa onu export et
         else:
