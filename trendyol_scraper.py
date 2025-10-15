@@ -293,6 +293,9 @@ class TrendyolScraper:
             # Tüm yorumları yüklemek için "Daha Fazla Göster" butonuna tıkla
             self._load_all_comments()
 
+            print(f"\nYorumlar işlenmeye başlanıyor...")
+            print(f"Hedef yorum sayısı: {self.max_comments if self.max_comments else 'Tümü'}")
+
             # Çeşitli CSS selector'larını dene
             possible_selectors = [
                 "div.comment-list div.rnr-com-card",
@@ -306,7 +309,7 @@ class TrendyolScraper:
             for selector in possible_selectors:
                 comment_elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
                 if comment_elements:
-                    print(f"'{selector}' ile {len(comment_elements)} yorum bulundu")
+                    print(f"'{selector}' ile {len(comment_elements)} yorum elementi bulundu")
                     break
 
             if not comment_elements:
@@ -315,11 +318,12 @@ class TrendyolScraper:
 
             # İlk 2 elementi atla (genellikle filtre/sıralama elementleri)
             comment_elements = comment_elements[2:] if len(comment_elements) > 2 else comment_elements
+            print(f"İşlenecek yorum elementi sayısı (filtrelemeden sonra): {len(comment_elements)}")
 
             for idx, comment_elem in enumerate(comment_elements, 1):
                 # Maksimum yorum sayısına ulaşıldıysa dur
                 if self.max_comments and len(self.comments) >= self.max_comments:
-                    print(f"Maksimum yorum sayısına ({self.max_comments}) ulaşıldı")
+                    print(f"\n✓ Hedef yorum sayısına ulaşıldı: {len(self.comments)}/{self.max_comments}")
                     break
 
                 try:
@@ -417,21 +421,26 @@ class TrendyolScraper:
                     print(f"Yorum {idx} çekilirken hata: {str(e)}")
                     continue
 
-            print(f"HTML'den toplam {len(self.comments)} yorum çekildi")
+            if self.max_comments and len(self.comments) < self.max_comments:
+                print(f"\n⚠ Uyarı: Hedef yorum sayısına ulaşılamadı. İstenen: {self.max_comments}, Çekilen: {len(self.comments)}")
+                print(f"Toplam {len(comment_elements)} element işlendi, {len(self.comments)} benzersiz yorum bulundu")
+            else:
+                print(f"\n✓ HTML'den toplam {len(self.comments)} yorum başarıyla çekildi")
 
         except Exception as e:
             print(f"HTML'den yorumlar çekilirken hata: {str(e)}")
 
     def _load_all_comments(self):
         """Tüm yorumları yüklemek için 'Daha Fazla' butonlarına tıklar"""
-        max_clicks = 200  # Maksimum tıklama sayısı
+        max_clicks = 500  # Maksimum tıklama sayısı
         clicks = 0
+        no_button_count = 0  # Buton bulunamama sayacı
 
         while clicks < max_clicks:
             try:
-                # Sayfayı biraz aşağı kaydır (yeni yorumların yüklenmesi için)
-                self.driver.execute_script("window.scrollBy(0, 500);")
-                time.sleep(0.5)
+                # Sayfayı agresif şekilde aşağı kaydır (yeni yorumların yüklenmesi için)
+                self.driver.execute_script("window.scrollBy(0, 800);")
+                time.sleep(0.3)
 
                 # Sayfadaki mevcut yorum sayısını kontrol et
                 if self.max_comments:
@@ -448,27 +457,41 @@ class TrendyolScraper:
                             current_comment_count = len(elements) - 2  # İlk 2'yi çıkar (filtre elementleri)
                             break
 
-                    # Yeterli yorum varsa dur
-                    if current_comment_count >= self.max_comments:
+                    # Yeterli yorum varsa dur (tekrar eden yorumlar için +50% buffer ekle)
+                    if current_comment_count >= self.max_comments * 1.5:
                         print(f"Yeterli yorum yüklendi ({current_comment_count}), daha fazla yükleme yapılmayacak")
                         break
 
                 # "Daha fazla yorum göster" butonunu bul
-                load_more = self.driver.find_element(By.CSS_SELECTOR, "button[class*='load-more'], button[class*='show-more']")
+                try:
+                    load_more = self.driver.find_element(By.CSS_SELECTOR, "button[class*='load-more'], button[class*='show-more']")
+                    no_button_count = 0  # Buton bulundu, sayacı sıfırla
 
-                if load_more.is_displayed():
-                    # Butonu görünür hale getir ve tıkla
-                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", load_more)
-                    time.sleep(1)
-                    self.driver.execute_script("arguments[0].click();", load_more)
-                    time.sleep(1.5)
-                    clicks += 1
-                    print(f"Daha fazla yorum yüklendi (tıklama #{clicks})")
-                else:
-                    break
-            except:
-                # Buton bulunamazsa veya tıklanamazsa döngüden çık
-                print(f"'Daha fazla' butonu bulunamadı veya tıklanamadı. Toplam {clicks} kez tıklandı.")
+                    if load_more.is_displayed():
+                        # Butonu görünür hale getir ve tıkla
+                        self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", load_more)
+                        time.sleep(0.5)
+                        self.driver.execute_script("arguments[0].click();", load_more)
+                        time.sleep(1)
+                        clicks += 1
+                        print(f"Daha fazla yorum yüklendi (tıklama #{clicks})")
+                    else:
+                        no_button_count += 1
+                        if no_button_count >= 3:
+                            print("'Daha fazla' butonu artık görünmüyor, tüm yorumlar yüklendi")
+                            break
+                except:
+                    no_button_count += 1
+                    if no_button_count >= 3:
+                        # 3 kez üst üste buton bulunamadıysa tüm yorumlar yüklenmiş demektir
+                        print(f"'Daha fazla' butonu bulunamadı. Tüm yorumlar yüklendi. Toplam {clicks} kez tıklandı.")
+                        break
+                    # Biraz daha scroll yap ve tekrar dene
+                    self.driver.execute_script("window.scrollBy(0, 1000);")
+                    time.sleep(0.5)
+
+            except Exception as e:
+                print(f"Yorum yükleme hatası: {str(e)}")
                 break
 
     def _extract_rating(self, rating_class):
