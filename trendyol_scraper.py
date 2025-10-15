@@ -410,15 +410,17 @@ class TrendyolScraper:
                             if (existing_comment.get('user') == comment_data['user'] and
                                 existing_comment.get('comment') == comment_data['comment']):
                                 is_duplicate = True
-                                print(f"Yorum {idx} tekrar ediyor, atlanıyor")
+                                print(f"Yorum {idx} tekrar ediyor, atlanıyor (Kullanıcı: {comment_data['user'][:20]}...)")
                                 break
 
                         if not is_duplicate:
                             self.comments.append(comment_data)
-                            print(f"Yorum {idx} eklendi")
+                            print(f"✓ Yorum {idx} eklendi (Toplam: {len(self.comments)})")
+                    else:
+                        print(f"Yorum {idx} boş veya çekilemedi, atlanıyor")
 
                 except Exception as e:
-                    print(f"Yorum {idx} çekilirken hata: {str(e)}")
+                    print(f"✗ Yorum {idx} çekilirken hata: {str(e)}")
                     continue
 
             if self.max_comments and len(self.comments) < self.max_comments:
@@ -457,8 +459,8 @@ class TrendyolScraper:
                             current_comment_count = len(elements) - 2  # İlk 2'yi çıkar (filtre elementleri)
                             break
 
-                    # Yeterli yorum varsa dur (tekrar eden yorumlar için +50% buffer ekle)
-                    if current_comment_count >= self.max_comments * 1.5:
+                    # Yeterli yorum varsa dur (tekrar eden yorumlar için +100% buffer ekle)
+                    if current_comment_count >= self.max_comments * 2:
                         print(f"Yeterli yorum yüklendi ({current_comment_count}), daha fazla yükleme yapılmayacak")
                         break
 
