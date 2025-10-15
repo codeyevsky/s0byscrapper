@@ -263,12 +263,12 @@ class TrendyolScraper:
                                 date_published = review.get('datePublished', '')
                                 comment_data['date'] = date_published if date_published else 'Tarih yok'
 
-                                # Tekrar kontrolü - aynı yorum zaten eklenmişse atla
+                                # Tekrar kontrolü - SADECE yorum metnine bak
                                 if comment_data['comment']:
                                     is_duplicate = False
                                     for existing_comment in self.comments:
-                                        if (existing_comment.get('user') == comment_data['user'] and
-                                            existing_comment.get('comment') == comment_data['comment']):
+                                        # Sadece yorum metni aynıysa tekrar
+                                        if existing_comment.get('comment') == comment_data['comment']:
                                             is_duplicate = True
                                             break
 
@@ -296,13 +296,9 @@ class TrendyolScraper:
             print(f"\nYorumlar işlenmeye başlanıyor...")
             print(f"Hedef yorum sayısı: {self.max_comments if self.max_comments else 'Tümü'}")
 
-            # Çeşitli CSS selector'larını dene
+            # Sadece class="review" olan div'leri seç
             possible_selectors = [
-                "div.comment-list div.rnr-com-card",
-                "div[class*='review-card']",
-                "div[class*='comment-card']",
-                "div[class*='review']",
-                "[class*='review-item']"
+                "div.review"
             ]
 
             comment_elements = []
@@ -367,23 +363,11 @@ class TrendyolScraper:
                     if 'user' not in comment_data:
                         comment_data['user'] = "Anonim"
 
-                    # Yorum metni - çeşitli selector'ları dene
-                    comment_selectors = [
-                        "div.comment-text",
-                        "div[class*='comment-text']",
-                        "div[class*='review-text']",
-                        "p[class*='comment']",
-                        "div[class*='body']"
-                    ]
-                    for selector in comment_selectors:
-                        try:
-                            comment_text = comment_elem.find_element(By.CSS_SELECTOR, selector).text
-                            if comment_text:
-                                comment_data['comment'] = comment_text
-                                break
-                        except:
-                            continue
-                    if 'comment' not in comment_data:
+                    # Yorum metni - SADECE review-comment class'ını kullan
+                    try:
+                        review_comment = comment_elem.find_element(By.CSS_SELECTOR, "span.review-comment")
+                        comment_data['comment'] = review_comment.text.strip()
+                    except:
                         comment_data['comment'] = ""
 
                     # Tarih
@@ -403,14 +387,14 @@ class TrendyolScraper:
                     if 'date' not in comment_data:
                         comment_data['date'] = "Tarih yok"
 
-                    # Tekrar kontrolü - aynı yorum zaten eklenmişse atla
+                    # Tekrar kontrolü - SADECE yorum metnine bak (kullanıcı adına BAKMA!)
                     if comment_data['comment']:
                         is_duplicate = False
                         for existing_comment in self.comments:
-                            if (existing_comment.get('user') == comment_data['user'] and
-                                existing_comment.get('comment') == comment_data['comment']):
+                            # Sadece yorum metni aynıysa tekrar, kullanıcı farklı olabilir
+                            if existing_comment.get('comment') == comment_data['comment']:
                                 is_duplicate = True
-                                print(f"Yorum {idx} tekrar ediyor, atlanıyor (Kullanıcı: {comment_data['user'][:20]}...)")
+                                print(f"Yorum {idx} tekrar ediyor (aynı metin), atlanıyor")
                                 break
 
                         if not is_duplicate:
