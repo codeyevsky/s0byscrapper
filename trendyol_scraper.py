@@ -345,22 +345,12 @@ class TrendyolScraper:
                     except:
                         pass  # Buton yoksa devam et
 
-                    # Kullanıcı adı - çeşitli selector'ları dene
-                    user_selectors = [
-                        "span[class*='rnr-com-tx']",
-                        "span[class*='user']",
-                        "div[class*='author']",
-                        "[class*='reviewer-name']"
-                    ]
-                    for selector in user_selectors:
-                        try:
-                            user_name = comment_elem.find_element(By.CSS_SELECTOR, selector).text
-                            if user_name:
-                                comment_data['user'] = user_name
-                                break
-                        except:
-                            continue
-                    if 'user' not in comment_data:
+                    # Kullanıcı adı - class="name"
+                    try:
+                        user_name = comment_elem.find_element(By.CSS_SELECTOR, ".name").text
+                        # Tüm whitespace'leri tek boşluğa çevir
+                        comment_data['user'] = ' '.join(user_name.split()) if user_name else "Anonim"
+                    except:
                         comment_data['user'] = "Anonim"
 
                     # Yorum metni - SADECE review-comment class'ını kullan
@@ -370,21 +360,12 @@ class TrendyolScraper:
                     except:
                         comment_data['comment'] = ""
 
-                    # Tarih
-                    date_selectors = [
-                        "span[class*='rnr-com-date']",
-                        "span[class*='date']",
-                        "time"
-                    ]
-                    for selector in date_selectors:
-                        try:
-                            date = comment_elem.find_element(By.CSS_SELECTOR, selector).text
-                            if date:
-                                comment_data['date'] = date
-                                break
-                        except:
-                            continue
-                    if 'date' not in comment_data:
+                    # Tarih - class="date"
+                    try:
+                        date = comment_elem.find_element(By.CSS_SELECTOR, ".date").text
+                        # Tüm whitespace'leri (newline, tab, vs.) tek boşluğa çevir
+                        comment_data['date'] = ' '.join(date.split()) if date else "Tarih yok"
+                    except:
                         comment_data['date'] = "Tarih yok"
 
                     # Tekrar kontrolü - SADECE yorum metnine bak (kullanıcı adına BAKMA!)
