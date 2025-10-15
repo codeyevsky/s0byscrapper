@@ -4,26 +4,21 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
 from docx import Document
-from docx.shared import Pt, RGBColor
-from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
-import os
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.colors import black
 from datetime import datetime
 
 
 class TrendyolScraper:
-    def __init__(self, headless=True):
+    def __init__(self, headless=False):
         """
         Trendyol scraper başlatıcı
 
@@ -36,19 +31,21 @@ class TrendyolScraper:
         self.product_info = {}
 
     def setup_driver(self):
-        """Selenium WebDriver ayarları"""
+        """Selenium WebDriver ayarları - Selenium Manager otomatik driver indirir"""
         chrome_options = Options()
 
         if self.headless:
-            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--headless=new")
 
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
         chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        # Selenium 4.6+ otomatik driver yönetimi kullanır
+        self.driver = webdriver.Chrome(options=chrome_options)
         self.driver.maximize_window()
 
     def scrape_product(self, url):
@@ -484,7 +481,7 @@ class TrendyolScraper:
             # Puan
             p = doc.add_paragraph()
             p.add_run('Puan: ').bold = True
-            p.add_run(f"{comment.get('rating', 'N/A')} ⭐")
+            p.add_run(f"{comment.get('rating', 'N/A')}/5")
 
             # Tarih
             p = doc.add_paragraph()
@@ -523,7 +520,7 @@ class TrendyolScraper:
             'CustomTitle',
             parent=styles['Heading1'],
             fontSize=24,
-            textColor=RGBColor(0, 0, 0),
+            textColor=black,
             spaceAfter=30,
             alignment=TA_LEFT
         )
@@ -532,7 +529,7 @@ class TrendyolScraper:
             'CustomHeading',
             parent=styles['Heading2'],
             fontSize=16,
-            textColor=RGBColor(0, 0, 0),
+            textColor=black,
             spaceAfter=12,
             spaceBefore=12
         )
