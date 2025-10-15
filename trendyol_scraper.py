@@ -225,7 +225,14 @@ class TrendyolScraper:
         try:
             print("Yorumlar çekiliyor...")
 
-            # Önce JSON-LD'den yorumları çekmeyi dene
+            # Eğer max_comments belirtilmişse direkt HTML'den çek
+            # Çünkü JSON-LD'de sınırlı sayıda yorum var (genellikle ~20)
+            if self.max_comments:
+                print(f"Maksimum {self.max_comments} yorum istendiği için HTML'den çekilecek...")
+                self._extract_comments_from_html()
+                return
+
+            # max_comments belirtilmemişse önce JSON-LD'den dene
             json_ld_data = self._extract_json_ld()
 
             # Review verilerini bul
@@ -239,11 +246,6 @@ class TrendyolScraper:
                             reviews = [reviews]
 
                         for review in reviews:
-                            # Maksimum yorum sayısına ulaşıldıysa dur
-                            if self.max_comments and len(self.comments) >= self.max_comments:
-                                print(f"Maksimum yorum sayısına ({self.max_comments}) ulaşıldı")
-                                break
-
                             if isinstance(review, dict) and review.get('@type') == 'Review':
                                 comment_data = {}
 
@@ -261,9 +263,18 @@ class TrendyolScraper:
                                 date_published = review.get('datePublished', '')
                                 comment_data['date'] = date_published if date_published else 'Tarih yok'
 
+                                # Tekrar kontrolü - aynı yorum zaten eklenmişse atla
                                 if comment_data['comment']:
-                                    self.comments.append(comment_data)
-                                    reviews_found = True
+                                    is_duplicate = False
+                                    for existing_comment in self.comments:
+                                        if (existing_comment.get('user') == comment_data['user'] and
+                                            existing_comment.get('comment') == comment_data['comment']):
+                                            is_duplicate = True
+                                            break
+
+                                    if not is_duplicate:
+                                        self.comments.append(comment_data)
+                                        reviews_found = True
 
             if reviews_found:
                 print(f"JSON-LD'den {len(self.comments)} yorum çekildi")
@@ -312,6 +323,10 @@ class TrendyolScraper:
                     break
 
                 try:
+                    # Yorumu görünür hale getir (scroll)
+                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'auto', block: 'center'});", comment_elem)
+                    time.sleep(0.2)
+
                     comment_data = {}
 
                     # "Devamını oku" butonunu kontrol et ve tıkla
@@ -384,9 +399,19 @@ class TrendyolScraper:
                     if 'date' not in comment_data:
                         comment_data['date'] = "Tarih yok"
 
-                    if comment_data['comment']:  # Sadece yorum varsa ekle
-                        self.comments.append(comment_data)
-                        print(f"Yorum {idx} eklendi")
+                    # Tekrar kontrolü - aynı yorum zaten eklenmişse atla
+                    if comment_data['comment']:
+                        is_duplicate = False
+                        for existing_comment in self.comments:
+                            if (existing_comment.get('user') == comment_data['user'] and
+                                existing_comment.get('comment') == comment_data['comment']):
+                                is_duplicate = True
+                                print(f"Yorum {idx} tekrar ediyor, atlanıyor")
+                                break
+
+                        if not is_duplicate:
+                            self.comments.append(comment_data)
+                            print(f"Yorum {idx} eklendi")
 
                 except Exception as e:
                     print(f"Yorum {idx} çekilirken hata: {str(e)}")
@@ -399,11 +424,15 @@ class TrendyolScraper:
 
     def _load_all_comments(self):
         """Tüm yorumları yüklemek için 'Daha Fazla' butonlarına tıklar"""
-        max_clicks = 100  # Maksimum tıklama sayısı
+        max_clicks = 200  # Maksimum tıklama sayısı
         clicks = 0
 
         while clicks < max_clicks:
             try:
+                # Sayfayı biraz aşağı kaydır (yeni yorumların yüklenmesi için)
+                self.driver.execute_script("window.scrollBy(0, 500);")
+                time.sleep(0.5)
+
                 # Sayfadaki mevcut yorum sayısını kontrol et
                 if self.max_comments:
                     # Yorum elementlerini say
@@ -428,16 +457,18 @@ class TrendyolScraper:
                 load_more = self.driver.find_element(By.CSS_SELECTOR, "button[class*='load-more'], button[class*='show-more']")
 
                 if load_more.is_displayed():
-                    self.driver.execute_script("arguments[0].scrollIntoView(true);", load_more)
+                    # Butonu görünür hale getir ve tıkla
+                    self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", load_more)
                     time.sleep(1)
-                    load_more.click()
-                    time.sleep(2)
+                    self.driver.execute_script("arguments[0].click();", load_more)
+                    time.sleep(1.5)
                     clicks += 1
                     print(f"Daha fazla yorum yüklendi (tıklama #{clicks})")
                 else:
                     break
             except:
                 # Buton bulunamazsa veya tıklanamazsa döngüden çık
+                print(f"'Daha fazla' butonu bulunamadı veya tıklanamadı. Toplam {clicks} kez tıklandı.")
                 break
 
     def _extract_rating(self, rating_class):
