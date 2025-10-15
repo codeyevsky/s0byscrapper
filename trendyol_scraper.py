@@ -18,15 +18,17 @@ from datetime import datetime
 
 
 class TrendyolScraper:
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, max_comments=None):
         """
         Trendyol scraper başlatıcı
 
         Args:
             headless (bool): Tarayıcıyı arka planda çalıştırma
+            max_comments (int): Maksimum çekilecek yorum sayısı (None = tümü)
         """
         self.driver = None
         self.headless = headless
+        self.max_comments = max_comments
         self.comments = []
         self.product_info = {}
 
@@ -123,22 +125,6 @@ class TrendyolScraper:
                 # Ürün adı
                 self.product_info['name'] = product_data.get('name', 'Ürün adı bulunamadı')
 
-                # Marka
-                brand = product_data.get('brand', {})
-                if isinstance(brand, dict):
-                    self.product_info['brand'] = brand.get('name', 'Marka bulunamadı')
-                else:
-                    self.product_info['brand'] = str(brand) if brand else 'Marka bulunamadı'
-
-                # Fiyat
-                offers = product_data.get('offers', {})
-                if isinstance(offers, dict):
-                    price = offers.get('price', 'Fiyat bulunamadı')
-                    currency = offers.get('priceCurrency', 'TRY')
-                    self.product_info['price'] = f"{price} {currency}"
-                else:
-                    self.product_info['price'] = 'Fiyat bulunamadı'
-
                 # Puan
                 rating_data = product_data.get('aggregateRating', {})
                 if isinstance(rating_data, dict):
@@ -161,30 +147,29 @@ class TrendyolScraper:
     def _extract_product_info_fallback(self):
         """Ürün bilgilerini CSS selector ile çeker (fallback)"""
         try:
-            # Ürün adı
+            # Ürün adı - info-title-row class'ından
             try:
-                product_name = self.driver.find_element(By.CSS_SELECTOR, "h1.pr-new-br, h1").text
-                self.product_info['name'] = product_name
-            except:
-                self.product_info['name'] = "Ürün adı bulunamadı"
+                # Önce info-title-row class'ını dene
+                title_row = self.driver.find_element(By.CSS_SELECTOR, ".info-title-row, [class*='info-title-row']")
 
-            # Marka
-            try:
-                brand = self.driver.find_element(By.CSS_SELECTOR, "a[class*='product-brand'], a[class*='brand']").text
-                self.product_info['brand'] = brand
-            except:
-                self.product_info['brand'] = "Marka bulunamadı"
+                # Ürün adı (başlık)
+                try:
+                    product_name = title_row.find_element(By.CSS_SELECTOR, "h1, [class*='title']").text
+                    self.product_info['name'] = product_name
+                except:
+                    self.product_info['name'] = title_row.text.split('\n')[0] if title_row.text else "Ürün adı bulunamadı"
 
-            # Fiyat
-            try:
-                price = self.driver.find_element(By.CSS_SELECTOR, "span.prc-dsc, span[class*='price']").text
-                self.product_info['price'] = price
             except:
-                self.product_info['price'] = "Fiyat bulunamadı"
+                # info-title-row bulunamazsa, eski selector'ları dene
+                try:
+                    product_name = self.driver.find_element(By.CSS_SELECTOR, "h1.pr-new-br, h1").text
+                    self.product_info['name'] = product_name
+                except:
+                    self.product_info['name'] = "Ürün adı bulunamadı"
 
-            # Puan
+            # Puan - rate class'ından
             try:
-                rating = self.driver.find_element(By.CSS_SELECTOR, "div.rating-score span, span[class*='rating']").text
+                rating = self.driver.find_element(By.CSS_SELECTOR, ".rate, [class*='rate'], div.rating-score span, span[class*='rating']").text
                 self.product_info['rating'] = rating
             except:
                 self.product_info['rating'] = "Puan bulunamadı"
@@ -254,6 +239,11 @@ class TrendyolScraper:
                             reviews = [reviews]
 
                         for review in reviews:
+                            # Maksimum yorum sayısına ulaşıldıysa dur
+                            if self.max_comments and len(self.comments) >= self.max_comments:
+                                print(f"Maksimum yorum sayısına ({self.max_comments}) ulaşıldı")
+                                break
+
                             if isinstance(review, dict) and review.get('@type') == 'Review':
                                 comment_data = {}
 
@@ -266,13 +256,6 @@ class TrendyolScraper:
 
                                 # Yorum metni
                                 comment_data['comment'] = review.get('reviewBody', '')
-
-                                # Puan
-                                rating_data = review.get('reviewRating', {})
-                                if isinstance(rating_data, dict):
-                                    comment_data['rating'] = str(rating_data.get('ratingValue', 'N/A'))
-                                else:
-                                    comment_data['rating'] = 'N/A'
 
                                 # Tarih
                                 date_published = review.get('datePublished', '')
@@ -319,9 +302,33 @@ class TrendyolScraper:
                 print("HTML'de yorum bulunamadı")
                 return
 
+            # İlk 2 elementi atla (genellikle filtre/sıralama elementleri)
+            comment_elements = comment_elements[2:] if len(comment_elements) > 2 else comment_elements
+
             for idx, comment_elem in enumerate(comment_elements, 1):
+                # Maksimum yorum sayısına ulaşıldıysa dur
+                if self.max_comments and len(self.comments) >= self.max_comments:
+                    print(f"Maksimum yorum sayısına ({self.max_comments}) ulaşıldı")
+                    break
+
                 try:
                     comment_data = {}
+
+                    # "Devamını oku" butonunu kontrol et ve tıkla
+                    try:
+                        # Önce XPath ile text içeriğine göre ara
+                        try:
+                            read_more_button = comment_elem.find_element(By.XPATH, ".//a[contains(text(), 'Devamını oku')] | .//button[contains(text(), 'Devamını oku')] | .//span[contains(text(), 'Devamını oku')]")
+                        except:
+                            # Yoksa class'a göre ara
+                            read_more_button = comment_elem.find_element(By.CSS_SELECTOR, "a[class*='read-more'], button[class*='read-more'], [class*='show-more'], [class*='devamini-oku']")
+
+                        if read_more_button and read_more_button.is_displayed():
+                            self.driver.execute_script("arguments[0].click();", read_more_button)
+                            time.sleep(0.5)
+                            print(f"Yorum {idx} için 'Devamını oku' butonuna tıklandı")
+                    except:
+                        pass  # Buton yoksa devam et
 
                     # Kullanıcı adı - çeşitli selector'ları dene
                     user_selectors = [
@@ -360,14 +367,6 @@ class TrendyolScraper:
                     if 'comment' not in comment_data:
                         comment_data['comment'] = ""
 
-                    # Puan
-                    try:
-                        rating_elem = comment_elem.find_element(By.CSS_SELECTOR, "div[class*='star'], div[class*='rating']")
-                        rating_style = rating_elem.get_attribute("class")
-                        comment_data['rating'] = self._extract_rating(rating_style)
-                    except:
-                        comment_data['rating'] = "N/A"
-
                     # Tarih
                     date_selectors = [
                         "span[class*='rnr-com-date']",
@@ -400,11 +399,31 @@ class TrendyolScraper:
 
     def _load_all_comments(self):
         """Tüm yorumları yüklemek için 'Daha Fazla' butonlarına tıklar"""
-        max_clicks = 10  # Maksimum tıklama sayısı
+        max_clicks = 100  # Maksimum tıklama sayısı
         clicks = 0
 
         while clicks < max_clicks:
             try:
+                # Sayfadaki mevcut yorum sayısını kontrol et
+                if self.max_comments:
+                    # Yorum elementlerini say
+                    possible_selectors = [
+                        "div.comment-list div.rnr-com-card",
+                        "div[class*='review-card']",
+                        "div[class*='comment-card']",
+                    ]
+                    current_comment_count = 0
+                    for selector in possible_selectors:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if elements:
+                            current_comment_count = len(elements) - 2  # İlk 2'yi çıkar (filtre elementleri)
+                            break
+
+                    # Yeterli yorum varsa dur
+                    if current_comment_count >= self.max_comments:
+                        print(f"Yeterli yorum yüklendi ({current_comment_count}), daha fazla yükleme yapılmayacak")
+                        break
+
                 # "Daha fazla yorum göster" butonunu bul
                 load_more = self.driver.find_element(By.CSS_SELECTOR, "button[class*='load-more'], button[class*='show-more']")
 
@@ -414,7 +433,7 @@ class TrendyolScraper:
                     load_more.click()
                     time.sleep(2)
                     clicks += 1
-                    print(f"Daha fazla yorum yüklendi ({clicks}/{max_clicks})")
+                    print(f"Daha fazla yorum yüklendi (tıklama #{clicks})")
                 else:
                     break
             except:
@@ -477,11 +496,6 @@ class TrendyolScraper:
             p = doc.add_paragraph()
             p.add_run('Kullanıcı: ').bold = True
             p.add_run(comment.get('user', 'Anonim'))
-
-            # Puan
-            p = doc.add_paragraph()
-            p.add_run('Puan: ').bold = True
-            p.add_run(f"{comment.get('rating', 'N/A')}/5")
 
             # Tarih
             p = doc.add_paragraph()
@@ -568,10 +582,6 @@ class TrendyolScraper:
             text = f"<b>Kullanıcı:</b> {comment.get('user', 'Anonim')}"
             story.append(Paragraph(text, normal_style))
 
-            # Puan
-            text = f"<b>Puan:</b> {comment.get('rating', 'N/A')}/5"
-            story.append(Paragraph(text, normal_style))
-
             # Tarih
             text = f"<b>Tarih:</b> {comment.get('date', 'Bilinmiyor')}"
             story.append(Paragraph(text, normal_style))
@@ -595,11 +605,12 @@ def main():
     # Trendyol ürün URL'si (örnek)
     url = input("Trendyol ürün URL'sini girin: ")
 
-    # Format seçimi
-    export_format = input("Hangi formatta kaydetmek istersiniz? (pdf/word/both): ").lower()
+    # Maksimum yorum sayısı
+    max_comments_input = input("Maksimum kaç yorum çekmek istersiniz? (Tümü için Enter'a basın): ").strip()
+    max_comments = int(max_comments_input) if max_comments_input else None
 
     # Scraper başlat
-    scraper = TrendyolScraper(headless=False)  # headless=True yaparak arka planda çalıştırabilirsiniz
+    scraper = TrendyolScraper(headless=False, max_comments=max_comments)  # headless=True yaparak arka planda çalıştırabilirsiniz
 
     try:
         # Yorumları çek
@@ -610,14 +621,9 @@ def main():
         print(f"Toplam {result['total_comments']} yorum çekildi")
         print(f"{'='*50}\n")
 
-        # Dosyaya kaydet
+        # Dosyaya kaydet (sadece Word formatı)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        if export_format in ['pdf', 'both']:
-            scraper.export_to_pdf(f"trendyol_yorumlar_{timestamp}.pdf")
-
-        if export_format in ['word', 'both']:
-            scraper.export_to_word(f"trendyol_yorumlar_{timestamp}.docx")
+        scraper.export_to_word(f"trendyol_yorumlar_{timestamp}.docx")
 
         print("\nİşlem tamamlandı!")
 
