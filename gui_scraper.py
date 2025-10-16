@@ -208,14 +208,11 @@ class TrendyolScraperGUI:
         )
         self.start_button.pack(fill='x', pady=(0, 10), ipady=12)
 
-        # Export butonları frame
-        export_frame = tk.Frame(control_frame, bg='white')
-        export_frame.pack(fill='x', pady=(10, 0))
-
+        # Word Export butonu
         self.word_button = tk.Button(
-            export_frame,
+            control_frame,
             text="📄 Word Export",
-            font=('Segoe UI', 10, 'bold'),
+            font=('Segoe UI', 11, 'bold'),
             bg=self.colors['success'],
             fg='white',
             activebackground='#059669',
@@ -225,22 +222,7 @@ class TrendyolScraperGUI:
             state='disabled',
             command=self.export_word
         )
-        self.word_button.pack(side='left', fill='x', expand=True, padx=(0, 5), ipady=10)
-
-        self.pdf_button = tk.Button(
-            export_frame,
-            text="📑 PDF Export",
-            font=('Segoe UI', 10, 'bold'),
-            bg=self.colors['success'],
-            fg='white',
-            activebackground='#059669',
-            activeforeground='white',
-            relief='flat',
-            cursor='hand2',
-            state='disabled',
-            command=self.export_pdf
-        )
-        self.pdf_button.pack(side='right', fill='x', expand=True, padx=(5, 0), ipady=10)
+        self.word_button.pack(fill='x', pady=(10, 0), ipady=12)
 
         # Temizle butonu
         clear_button = tk.Button(
@@ -400,7 +382,6 @@ class TrendyolScraperGUI:
             # Butonları devre dışı bırak
             self.start_button.config(state='disabled', bg='gray')
             self.word_button.config(state='disabled', bg='gray')
-            self.pdf_button.config(state='disabled', bg='gray')
 
             # Parametreleri al
             url = self.url_entry.get().strip()
@@ -438,9 +419,8 @@ class TrendyolScraperGUI:
             self.log(f"✓ Ürün: {self.result['product_info'].get('name', 'Bilinmiyor')}", 'success')
             self.log("="*60, 'success')
 
-            # Export butonlarını aktif et
+            # Export butonunu aktif et
             self.word_button.config(state='normal', bg=self.colors['success'])
-            self.pdf_button.config(state='normal', bg=self.colors['success'])
 
             self.update_status("Tamamlandı", self.colors['success'])
 
@@ -473,27 +453,6 @@ class TrendyolScraperGUI:
         except Exception as e:
             self.log(f"✗ Word export hatası: {str(e)}", 'error')
             messagebox.showerror("Hata", f"Word export hatası:\n{str(e)}")
-
-    def export_pdf(self):
-        """PDF export"""
-        if not self.scraper:
-            messagebox.showerror("Hata", "Önce scraping yapmalısınız!")
-            return
-
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            mode = self.result['scrape_mode']
-            filename = f"trendyol_{mode}_{timestamp}.pdf"
-
-            self.log(f"📑 PDF dosyası oluşturuluyor: {filename}", 'info')
-            self.scraper.export_to_pdf(filename)
-            self.log(f"✓ PDF dosyası oluşturuldu: {filename}", 'success')
-
-            messagebox.showinfo("Başarılı", f"PDF dosyası oluşturuldu:\n{filename}")
-
-        except Exception as e:
-            self.log(f"✗ PDF export hatası: {str(e)}", 'error')
-            messagebox.showerror("Hata", f"PDF export hatası:\n{str(e)}")
 
 
 def main():
